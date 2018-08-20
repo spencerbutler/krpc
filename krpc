@@ -1,0 +1,330 @@
+#!/usr/bin/env bash
+# krpc - Kodi jsonRPC Spencer Butler <spencerunderground@gmail.com>
+# Attempt to control Kodi's RPC interface
+# be careful with syntax. a space in " jsonrpc" had me fucked up for too long ...
+
+# these aren't actually reliable
+# exit 0 = no error
+# exit 1 = error
+# exit 3 = no input
+
+# change these to suit your needs
+user="kodi"
+pass="kodi"
+host="localhost"
+port="80"
+run="$1"
+
+rpc='jsonrpc'
+ver="2.0"
+kv_rpc="\"${rpc}\": \"${ver}\""
+
+id=1
+kv_id="\"id\": ${id}"
+
+header='content-type: application/json;'
+url=http://$user:$pass@$host:$port/$rpc
+
+
+#TODO I don't like the way the method variables are handled here.
+# the video playerid is 1
+vid=1
+vs='VideoLibrary.Scan'
+vc='VideoLibrary.Clean'
+
+# the audio playerid is 0
+aid=0
+as='AudioLibrary.Scan'
+ac='AudioLibrary.Clean'
+aga='AudioLibrary.GetAlbums'
+
+gap='Player.GetActivePlayers'
+pp='Player.PlayPause'
+gp='Player.GetProperties'
+pgt='Player.GoTo'
+ps='Player.Seek'
+
+volume='Application.SetVolume'
+
+playerid=
+method=
+#kv_method="\"method\": \"${method}\""
+
+# make sure the tools we call are available
+required="curl jq python" 
+for req in $required; do
+	pkg=$(type -p $req)
+	if [[ ! -x $pkg ]]; then
+		echo "$req is not installed."
+
+		# see if we can guess their package system
+		pkgmgr="apt-get yum zipper pacman portage"
+		for p in $pkgmgr; do
+			mgr=$(type -p $p)
+			if [[ -x $mgr ]]; then
+				echo "Try: $mgr install $req"
+				exit 3
+			fi
+		done
+		echo "I couldn't find your package manager."
+		echo "You need to install $req to use $0."
+		exit 3
+	fi
+done
+
+#TODO this is starting to get unwieldy, maybe printf instead?
+help=$(echo -e "usage: $0 [Option] <param>\n
+	Requires: $required\n
+	Player Options: (media type is autodetected)
+	-seek --seek <seconds>\t\t negative values rewind :: values < 60 start at that position
+	-sf --seek-forward\t\t seek small forward
+	-sb --seek-backward\t\t seek small backward
+	-goto --goto <next|previous>\t goto next/previous in playlist
+	-gn --goto-next\t\t\t goto next item in playlist
+	-gp --goto-previous\t\t goto previous item in playlist
+	-pi --player-info\t\t query current playing media
+	-p --pause\t\t\t pause the current media source
+	-v --volume <increment | decrement> or <0..100>\n
+	Library Options:
+	-as --audio-scan\t\t scan the audio library for new content
+	-ac --audio-clean\t\t clean the audio library 
+	-vs --video-scan\t\t scan the video library for new content
+	-vc --video-clean\t\t clean the video library\n 
+	GUI Options:
+	-gg --go-gui <Back | ContextMenu | Down | ExecuteAction | Home | Info | Left | Right | Select | SendText | ShowCodec | ShowOSD | ShowPlayerProcessInfo | Up>\n
+	Debug Options:
+	-ad --ad-hoc <method> <key> <value>
+	-m --methods\t\t\t see valid methods
+	-i --introspect <method>\t debug stuff")
+
+if [ ! "$1" ]; then
+	echo "$help"
+	exit 3
+fi
+
+########################################################
+# functions because curl's quoting standards make me mad
+########################################################
+
+# simple method fetch
+fetch() { 
+	curl --silent --data-binary "{ ${kv_rpc}, \"method\": \"${method}\", ${kv_id} }" --header "$header" "$url" #| python -m json.tool
+}
+
+# pause current media source
+pause() { 
+	curl --silent --data-binary "{ ${kv_rpc}, \"method\": \"${method}\", \"params\": { \"playerid\": ${playerid} }, ${kv_id} }" --header "$header" "$url" #| python -m json.tool
+}
+
+# investigate available methods
+introspect() { 
+	curl --silent --data-binary "{ ${kv_rpc}, \"method\": \"JSONRPC.Introspect\", \"params\": { \"filter\": { \"id\": \"${method}\", \"type\": \"method\" } }, ${kv_id} }" \
+		--header "$header" "$url" | python -m json.tool
+}
+
+# get info on current playing media
+player_info() { 
+	# "params": {  "properties": ["title", "album", "artist"], "playerid": 0}, "id": "AudioGetItem" }
+	method=$gap
+	mmethod="Player.GetItem"
+	playerid=$(fetch | jq '.result[] | .playerid')
+	if [[ $playerid == 0 ]]; then
+		mid="AudioGetItem"
+		properties='"duration", "album", "artist"'
+	elif [[ $playerid == 1 ]]; then
+		mid="VideoGetItem"
+		properties='"runtime", "lastplayed", "resume", "plot", "showtitle", "season", "episode"'
+	fi
+
+	curl --silent --data-binary "{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": { \"properties\": [ ${properties} ], \"playerid\": ${playerid} }, \"id\": \"${mid}\" }" \
+		--header "$header" "$url" | python -m json.tool
+}
+
+# navigate current media
+player_goto() { 
+	curl --silent --data-binary "{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": { \"playerid\": ${playerid}, \"${key}\": \"${val}\" } }" \
+		--header "$header" "$url" | python -m json.tool
+}
+
+# navigate current media
+player_seek() { 
+	curl --silent --data-binary "{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": {\"${key}\": { \"${kkey}\": ${val} }, \"playerid\": ${playerid} } }" \
+		--header "$header" "$url" | python -m json.tool
+}
+
+# retuns the key/val pairs for a method
+player_kv() { 
+	# don't quote integers, but do quote strings
+	# don't use "[[ ]]" here because, bash
+	if [ "$val" -ge 0 ]; then
+		curl --silent --data-binary "{ ${kv_rpc}, ${kv_id}, \"method\": \"${method}\", \"params\": { \"${key}\": ${val} } }" \
+		--header "$header" "$url" | python -m json.tool
+	else
+		curl --silent --data-binary "{ ${kv_rpc}, ${kv_id}, \"method\": \"${method}\", \"params\": { \"${key}\": \"${val}\" } }" \
+		--header "$header" "$url" | python -m json.tool
+	fi
+}
+
+########################################################
+
+case "$run" in
+	-h|--help)
+		echo -e "$help"
+		;;
+
+	# Player Options
+	-seek|--seek)
+		if [[ ! $2 ]]; then
+			echo "usage: $0 -seek <seconds>"
+			echo "NOTE: values less than 60 will start you at that spot BUGID"
+			echo "negative values rewind"
+			echo "BUGID: https://forum.kodi.tv/showthread.php?tid=237408"
+			exit 3
+		fi
+		method=$gap
+		mmethod=$ps
+		key=value
+		kkey=seconds
+		val=$2
+		playerid=$(fetch | jq '.result[] | .playerid')
+		player_seek
+		player_info
+		;;
+
+	-goto|--goto)
+		args="next previous"
+		if [[ ! $2 ]]; then
+			echo "usage: $0 -goto [ next | previous ]"
+			exit 3
+		fi
+		method=$gap
+		mmethod=$pgt
+		playerid=$(fetch | jq '.result[] | .playerid')
+		key=to
+		val=$2
+		player_goto 1>/dev/null
+		player_info
+		;;
+
+	-gp|--goto-previous)
+		method=$gap
+		mmethod=$pgt
+		playerid=$(fetch | jq '.result[] | .playerid')
+		key=to
+		val=previous
+		player_goto 1>/dev/null
+		player_info
+		;;
+
+	-gn|--goto-next)
+		method=$gap
+		mmethod=$pgt
+		playerid=$(fetch | jq '.result[] | .playerid')
+		key=to
+		val=next
+		player_goto 1>/dev/null
+		player_info
+		;;
+
+	-sf|--seek-forward)
+		method=$gap
+		mmethod=$ps
+		key=value
+		val=smallforward
+		playerid=$(fetch | jq '.result[] | .playerid')
+		player_goto
+		player_info
+		;;
+
+	-sb|--seek-backward)
+		method=$gap
+		mmethod=$ps
+		key=value
+		val=smallbackward
+		playerid=$(fetch | jq '.result[] | .playerid')
+		player_goto
+		;;
+
+	-pi|--player-info)
+		player_info
+		;;
+
+	-p|--pause)
+		method=$gap
+		playerid=$(fetch | jq '.result[] | .playerid')
+		player=$(fetch | jq '.result[] | .type')
+		method=$pp
+		echo -e "$player pause was toggled"
+		pause 1>/dev/null
+		player_info
+		;;
+
+	-v|--volume)
+		method=$volume
+		key=volume
+		val=$2
+		player_kv
+		;;
+
+	# Library Options
+	-as|--audio-scan)
+		method=$as
+		fetch
+		;;
+
+	-ac|--audio-clean)
+		method=$ac
+		fetch
+		;;
+
+	-vs|--video-scan)
+		method=$vs
+		fetch
+		;;
+
+	-vc|--video-clean)
+		method=$vc
+		fetch
+		;;
+
+	# GUI Options
+	-gg|--go-gui)
+		if [[ ! $2 ]]; then
+			echo "usage: $0 -gg <Back | ContextMenu | Down | ExecuteAction | Home | Info | Left | Right | Select | SendText | ShowCodec | ShowOSD | ShowPlayerProcessInfo | Up>"
+			echo "case insensitive"
+			exit 3
+		fi
+		method='Input'.$2
+		fetch 1>/dev/null
+		;;
+
+	# Debug Options
+	-i|--introspect)
+		method="$2"
+		introspect | python -m json.tool
+		;;
+
+	-m|--methods)
+		curl --silent "$url" | jq '.methods | keys'
+		;;
+
+	-ad|--ad-hoc)
+		if [[ ! $4 ]]; then
+			echo -e "USAGE: $0 $1 <method> <key> <val>\n"
+			echo -e "find an interesting <method> with:\n $0 --methods\n"
+			echo -e "research details on <method> with:\n $0 --introspect <method>\n"
+			echo -e "then try $0 $1 again\n"
+			exit 3
+		fi
+		method=$2
+		key=$3
+		val=$4
+		player_kv
+		;;
+
+	**)
+		echo "$help"
+		;;
+esac
+
+# END
