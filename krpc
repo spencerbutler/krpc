@@ -8,13 +8,25 @@
 # exit 1 = error
 # exit 3 = no input
 
+#######################################
 # change these to suit your needs
-user="kodi"
-pass="kodi"
-host="localhost"
-port="80"
-run="$1"
+# or put them in your ~/.krpc.cfg
+# if you put your changes here, 
+# kill the if statement below
+user=kodi
+pass=kodi
+host=localhost
+port=80
 
+if [[ ~/.krpc.cfg ]]; then
+	source ~/.krpc.cfg
+else
+	echo "You don't have a krpc.cfg file, proceeding any way"
+fi
+#
+#######################################
+
+run="$1"
 rpc='jsonrpc'
 ver="2.0"
 kv_rpc="\"${rpc}\": \"${ver}\""
@@ -51,7 +63,7 @@ method=
 #kv_method="\"method\": \"${method}\""
 
 # make sure the tools we call are available
-required="curl jq python" 
+required="curl jq" 
 for req in $required; do
 	pkg=$(type -p $req)
 	if [[ ! -x $pkg ]]; then
@@ -91,7 +103,12 @@ help=$(echo -e "usage: $0 [Option] <param>\n
 	-vs --video-scan\t\t scan the video library for new content
 	-vc --video-clean\t\t clean the video library\n 
 	GUI Options:
-	-gg --go-gui <Back | ContextMenu | Down | ExecuteAction | Home | Info | Left | Right | Select | SendText | ShowCodec | ShowOSD | ShowPlayerProcessInfo | Up>\n
+	-gg --go-gui <action>\t\tone of the following <action>'s
+	\t\t\t\tBack         Info   ShowCodec
+	\t\t\t\tContextMenu  Left   ShowOSD
+	\t\t\t\tDown         Right  ShowPlayerProcessInfo
+	\t\t\t\tSelect       Up     ExecuteAction  
+	\t\t\t\tHome         SendText\n
 	Debug Options:
 	-ad --ad-hoc <method> <key> <value>
 	-m --methods\t\t\t see valid methods
@@ -108,23 +125,30 @@ fi
 
 # simple method fetch
 fetch() { 
-	curl --silent --data-binary "{ ${kv_rpc}, \"method\": \"${method}\", ${kv_id} }" --header "$header" "$url" #| python -m json.tool
+	curl --silent --data-binary \
+		"{ ${kv_rpc}, \"method\": \"${method}\", ${kv_id} }" \
+		--header "$header" "$url" | jq '.'
 }
 
 # pause current media source
 pause() { 
-	curl --silent --data-binary "{ ${kv_rpc}, \"method\": \"${method}\", \"params\": { \"playerid\": ${playerid} }, ${kv_id} }" --header "$header" "$url" #| python -m json.tool
+	curl --silent --data-binary \
+		"{ ${kv_rpc}, \"method\": \"${method}\", \"params\": \
+		{ \"playerid\": ${playerid} }, ${kv_id} }" \
+		--header "$header" "$url" | jq '.'
 }
 
 # investigate available methods
 introspect() { 
-	curl --silent --data-binary "{ ${kv_rpc}, \"method\": \"JSONRPC.Introspect\", \"params\": { \"filter\": { \"id\": \"${method}\", \"type\": \"method\" } }, ${kv_id} }" \
-		--header "$header" "$url" | python -m json.tool
+	curl --silent --data-binary \
+		"{ ${kv_rpc}, \"method\": \"JSONRPC.Introspect\", \"params\": \
+		{ \"filter\": \
+			{ \"id\": \"${method}\", \"type\": \"method\" } }, ${kv_id} }" \
+		--header "$header" "$url" | jq '.'
 }
 
 # get info on current playing media
 player_info() { 
-	# "params": {  "properties": ["title", "album", "artist"], "playerid": 0}, "id": "AudioGetItem" }
 	method=$gap
 	mmethod="Player.GetItem"
 	playerid=$(fetch | jq '.result[] | .playerid')
@@ -136,20 +160,26 @@ player_info() {
 		properties='"runtime", "lastplayed", "resume", "plot", "showtitle", "season", "episode"'
 	fi
 
-	curl --silent --data-binary "{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": { \"properties\": [ ${properties} ], \"playerid\": ${playerid} }, \"id\": \"${mid}\" }" \
-		--header "$header" "$url" | python -m json.tool
+	curl --silent --data-binary \
+		"{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": \
+		{ \"properties\": [ ${properties} ], \"playerid\": ${playerid} }, \"id\": \"${mid}\" }" \
+		--header "$header" "$url" | jq '.'
 }
 
 # navigate current media
 player_goto() { 
-	curl --silent --data-binary "{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": { \"playerid\": ${playerid}, \"${key}\": \"${val}\" } }" \
-		--header "$header" "$url" | python -m json.tool
+	curl --silent --data-binary \
+		"{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": \
+		{ \"playerid\": ${playerid}, \"${key}\": \"${val}\" } }" \
+		--header "$header" "$url" | jq '.'
 }
 
 # navigate current media
 player_seek() { 
-	curl --silent --data-binary "{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": {\"${key}\": { \"${kkey}\": ${val} }, \"playerid\": ${playerid} } }" \
-		--header "$header" "$url" | python -m json.tool
+	curl --silent --data-binary \
+		"{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": \
+		{\"${key}\": { \"${kkey}\": ${val} }, \"playerid\": ${playerid} } }" \
+		--header "$header" "$url" | jq '.'
 }
 
 # retuns the key/val pairs for a method
@@ -157,11 +187,15 @@ player_kv() {
 	# don't quote integers, but do quote strings
 	# don't use "[[ ]]" here because, bash
 	if [ "$val" -ge 0 ]; then
-		curl --silent --data-binary "{ ${kv_rpc}, ${kv_id}, \"method\": \"${method}\", \"params\": { \"${key}\": ${val} } }" \
-		--header "$header" "$url" | python -m json.tool
+		curl --silent --data-binary \
+			"{ ${kv_rpc}, ${kv_id}, \"method\": \"${method}\", \"params\": \
+			{ \"${key}\": ${val} } }" \
+		--header "$header" "$url" | jq '.'
 	else
-		curl --silent --data-binary "{ ${kv_rpc}, ${kv_id}, \"method\": \"${method}\", \"params\": { \"${key}\": \"${val}\" } }" \
-		--header "$header" "$url" | python -m json.tool
+		curl --silent --data-binary \
+			"{ ${kv_rpc}, ${kv_id}, \"method\": \"${method}\", \"params\": \
+			{ \"${key}\": \"${val}\" } }" \
+		--header "$header" "$url" | jq '.'
 	fi
 }
 
@@ -290,7 +324,14 @@ case "$run" in
 	# GUI Options
 	-gg|--go-gui)
 		if [[ ! $2 ]]; then
-			echo "usage: $0 -gg <Back | ContextMenu | Down | ExecuteAction | Home | Info | Left | Right | Select | SendText | ShowCodec | ShowOSD | ShowPlayerProcessInfo | Up>"
+			echo "usage: $0 -gg <action>"
+			echo -e "where <action> is one of:\n"
+			echo -e "\tBack         Info   ShowCodec"
+			echo -e "\tContextMenu  Left   ShowOSD"
+			echo -e "\tDown         Right  ShowPlayerProcessInfo"
+			echo -e "\tSelect       Up     ExecuteAction"
+			echo -e "\tHome         SendText\n"
+
 			echo "case insensitive"
 			exit 3
 		fi
@@ -301,7 +342,7 @@ case "$run" in
 	# Debug Options
 	-i|--introspect)
 		method="$2"
-		introspect | python -m json.tool
+		introspect | jq '.'
 		;;
 
 	-m|--methods)
