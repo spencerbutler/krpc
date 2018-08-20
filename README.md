@@ -1,6 +1,10 @@
 # krpc
 Kodi jsonRPC :: wrapper to manipulate Kodi's jsonRPC
 
+## History 
+I started this because I wanted a way to update the libraries, on the command line, after adding new content.
+Well, I kept adding stuff and things and here we are. Feel free to do foo with this.
+
 usage: ./krpc [Option] param
 
         Requires: curl jq python
