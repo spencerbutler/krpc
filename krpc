@@ -21,10 +21,11 @@ port=80
 if [[ ~/.krpc.cfg ]]; then
 	source ~/.krpc.cfg
 else
-	echo "You don't have a krpc.cfg file, proceeding any way"
+	echo "You don't have a ~/.krpc.cfg file, proceeding anyway"
 fi
 #
 #######################################
+
 
 run="$1"
 rpc='jsonrpc'
@@ -36,7 +37,10 @@ kv_id="\"id\": ${id}"
 
 header='content-type: application/json;'
 url=http://$user:$pass@$host:$port/$rpc
+curlopts='--silent --data-binary'
 
+# declare met as a hash to store variables and stuff
+declare -A met
 
 #TODO I don't like the way the method variables are handled here.
 # the video playerid is 1
@@ -57,10 +61,6 @@ pgt='Player.GoTo'
 ps='Player.Seek'
 
 volume='Application.SetVolume'
-
-playerid=
-method=
-#kv_method="\"method\": \"${method}\""
 
 # make sure the tools we call are available
 required="curl jq" 
@@ -115,7 +115,7 @@ help=$(echo -e "usage: $0 [Option] <param>\n
 	-i --introspect <method>\t debug stuff")
 
 if [ ! "$1" ]; then
-	echo "$help"
+	echo "${help}"
 	exit 3
 fi
 
@@ -123,35 +123,44 @@ fi
 # functions because curl's quoting standards make me mad
 ########################################################
 
+# get the media type
+get_media_type() {
+	met=\"$gap\"
+	playerid=$(fetch | jq '.result[] | .playerid')
+	met[pid_key]=\"playerid\"
+	met[pid_val]="$playerid"
+	kv_pid="${met[pid_key]}: ${met[pid_val]}"
+}
+
 # simple method fetch
 fetch() { 
-	curl --silent --data-binary \
-		"{ ${kv_rpc}, \"method\": \"${method}\", ${kv_id} }" \
-		--header "$header" "$url" | jq '.'
+	kv_met="\"method\": ${met}"
+	curl ${curlopts} \
+		"{ ${kv_rpc}, ${kv_met}, ${kv_id} }" \
+	--header "${header}" "${url}" | jq '.'
 }
 
 # pause current media source
 pause() { 
-	curl --silent --data-binary \
-		"{ ${kv_rpc}, \"method\": \"${method}\", \"params\": \
-		{ \"playerid\": ${playerid} }, ${kv_id} }" \
-		--header "$header" "$url" | jq '.'
+	kv_met="\"method\": ${met}"
+	curl ${curlopts} \
+		"{ ${kv_rpc}, ${kv_met}, \"params\": 
+		{ ${kv_pid} }, ${kv_id} }" \
+	--header "${header}" "${url}" | jq '.'
 }
 
 # investigate available methods
 introspect() { 
-	curl --silent --data-binary \
-		"{ ${kv_rpc}, \"method\": \"JSONRPC.Introspect\", \"params\": \
-		{ \"filter\": \
-			{ \"id\": \"${method}\", \"type\": \"method\" } }, ${kv_id} }" \
-		--header "$header" "$url" | jq '.'
+	curl ${curlopts} \
+		"{ ${kv_rpc}, \"method\": \"JSONRPC.Introspect\", \"params\": 
+		{ \"filter\": 
+			{ \"id\": ${met}, \"type\": \"method\" } }, ${kv_id} }" \
+	--header "${header}" "${url}" | jq '.'
 }
 
 # get info on current playing media
 player_info() { 
-	method=$gap
 	mmethod="Player.GetItem"
-	playerid=$(fetch | jq '.result[] | .playerid')
 	if [[ $playerid == 0 ]]; then
 		mid="AudioGetItem"
 		properties='"duration", "album", "artist"'
@@ -160,46 +169,51 @@ player_info() {
 		properties='"runtime", "lastplayed", "resume", "plot", "showtitle", "season", "episode"'
 	fi
 
-	curl --silent --data-binary \
-		"{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": \
+	curl ${curlopts} \
+		"{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": 
 		{ \"properties\": [ ${properties} ], \"playerid\": ${playerid} }, \"id\": \"${mid}\" }" \
-		--header "$header" "$url" | jq '.'
+	--header "${header}" "${url}" | jq '.'
 }
 
 # navigate current media
 player_goto() { 
-	curl --silent --data-binary \
-		"{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": \
+	kv_met="\"method\": ${met}"
+	curl ${curlopts} \
+		"{ ${kv_rpc}, ${kv_id}, ${kv_met}, \"params\":
 		{ \"playerid\": ${playerid}, \"${key}\": \"${val}\" } }" \
-		--header "$header" "$url" | jq '.'
+	--header "${header}" "${url}" | jq '.'
 }
 
 # navigate current media
 player_seek() { 
-	curl --silent --data-binary \
-		"{ ${kv_rpc}, ${kv_id}, \"method\": \"${mmethod}\", \"params\": \
+	kv_met="\"method\": ${met}"
+	curl ${curlopts} \
+		"{ ${kv_rpc}, ${kv_id}, ${kv_met}, \"params\":
 		{\"${key}\": { \"${kkey}\": ${val} }, \"playerid\": ${playerid} } }" \
-		--header "$header" "$url" | jq '.'
+	--header "${header}" "${url}" | jq '.'
 }
 
 # retuns the key/val pairs for a method
-player_kv() { 
+one_kv() { 
+	kv_met="\"method\": ${met}"
 	# don't quote integers, but do quote strings
 	# don't use "[[ ]]" here because, bash
 	if [ "$val" -ge 0 ]; then
-		curl --silent --data-binary \
-			"{ ${kv_rpc}, ${kv_id}, \"method\": \"${method}\", \"params\": \
+		curl ${curlopts} \
+			"{ ${kv_rpc}, ${kv_id}, ${kv_met}, \"params\":
 			{ \"${key}\": ${val} } }" \
-		--header "$header" "$url" | jq '.'
+		--header "${header}" "${url}" | jq '.'
 	else
-		curl --silent --data-binary \
-			"{ ${kv_rpc}, ${kv_id}, \"method\": \"${method}\", \"params\": \
+		curl ${curlopts} \
+	d		"{ ${kv_rpc}, ${kv_id}, ${kv_met}, \"params\":
 			{ \"${key}\": \"${val}\" } }" \
-		--header "$header" "$url" | jq '.'
+		--header "${header}" "${url}" | jq '.'
 	fi
 }
-
 ########################################################
+
+get_media_type
+
 
 case "$run" in
 	-h|--help)
@@ -215,12 +229,10 @@ case "$run" in
 			echo "BUGID: https://forum.kodi.tv/showthread.php?tid=237408"
 			exit 3
 		fi
-		method=$gap
 		mmethod=$ps
 		key=value
 		kkey=seconds
 		val=$2
-		playerid=$(fetch | jq '.result[] | .playerid')
 		player_seek
 		player_info
 		;;
@@ -231,9 +243,7 @@ case "$run" in
 			echo "usage: $0 -goto [ next | previous ]"
 			exit 3
 		fi
-		method=$gap
-		mmethod=$pgt
-		playerid=$(fetch | jq '.result[] | .playerid')
+		met=\"$pgt\"
 		key=to
 		val=$2
 		player_goto 1>/dev/null
@@ -241,9 +251,7 @@ case "$run" in
 		;;
 
 	-gp|--goto-previous)
-		method=$gap
-		mmethod=$pgt
-		playerid=$(fetch | jq '.result[] | .playerid')
+		met=\"$pgt\"
 		key=to
 		val=previous
 		player_goto 1>/dev/null
@@ -251,9 +259,7 @@ case "$run" in
 		;;
 
 	-gn|--goto-next)
-		method=$gap
-		mmethod=$pgt
-		playerid=$(fetch | jq '.result[] | .playerid')
+		met=\"$pgt\"
 		key=to
 		val=next
 		player_goto 1>/dev/null
@@ -261,21 +267,17 @@ case "$run" in
 		;;
 
 	-sf|--seek-forward)
-		method=$gap
-		mmethod=$ps
+		met=\"$ps\"
 		key=value
 		val=smallforward
-		playerid=$(fetch | jq '.result[] | .playerid')
 		player_goto
 		player_info
 		;;
 
 	-sb|--seek-backward)
-		method=$gap
-		mmethod=$ps
+		met=\"$ps\"
 		key=value
 		val=smallbackward
-		playerid=$(fetch | jq '.result[] | .playerid')
 		player_goto
 		;;
 
@@ -284,40 +286,38 @@ case "$run" in
 		;;
 
 	-p|--pause)
-		method=$gap
-		playerid=$(fetch | jq '.result[] | .playerid')
 		player=$(fetch | jq '.result[] | .type')
-		method=$pp
+		met=\"$pp\"
 		echo -e "$player pause was toggled"
 		pause 1>/dev/null
 		player_info
 		;;
 
 	-v|--volume)
-		method=$volume
+		met=\"$volume\"
 		key=volume
 		val=$2
-		player_kv
+		one_kv
 		;;
 
 	# Library Options
 	-as|--audio-scan)
-		method=$as
+		met=\"$as\"
 		fetch
 		;;
 
 	-ac|--audio-clean)
-		method=$ac
+		met=\"$ac\"
 		fetch
 		;;
 
 	-vs|--video-scan)
-		method=$vs
+		met=\"$vs\"
 		fetch
 		;;
 
 	-vc|--video-clean)
-		method=$vc
+		met=\"$vc\"
 		fetch
 		;;
 
@@ -335,18 +335,18 @@ case "$run" in
 			echo "case insensitive"
 			exit 3
 		fi
-		method='Input'.$2
+		met=\"'Input'.$2\"
 		fetch 1>/dev/null
 		;;
 
 	# Debug Options
 	-i|--introspect)
-		method="$2"
+		met=\"$2\"
 		introspect | jq '.'
 		;;
 
 	-m|--methods)
-		curl --silent "$url" | jq '.methods | keys'
+		curl --silent "${url}" | jq '.methods | keys'
 		;;
 
 	-ad|--ad-hoc)
@@ -357,14 +357,14 @@ case "$run" in
 			echo -e "then try $0 $1 again\n"
 			exit 3
 		fi
-		method=$2
+		met=\"$2\"
 		key=$3
 		val=$4
-		player_kv
+		one_kv
 		;;
 
 	**)
-		echo "$help"
+		echo "${help}"
 		;;
 esac
 
