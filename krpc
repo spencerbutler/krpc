@@ -229,7 +229,7 @@ case "$run" in
 			echo "BUGID: https://forum.kodi.tv/showthread.php?tid=237408"
 			exit 3
 		fi
-		mmethod=$ps
+		met=\"$ps\"
 		key=value
 		kkey=seconds
 		val=$2
