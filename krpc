@@ -76,7 +76,7 @@ help=$(echo -e "usage: $0 [Option] <param>\n
    -gp --goto-previous\t\t goto previous item in playlist
    -pi --player-info\t\t query current playing media
    -p --pause\t\t\t pause the current media source
-   -v --volume <increment | decrement> or <0..100>\n
+   -v --volume <increment|decrement> or <0..100>\n
    Library Options:
    -as --audio-scan\t\t scan the audio library for new content
    -ac --audio-clean\t\t clean the audio library
