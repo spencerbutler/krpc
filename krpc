@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# krpc - Kodi jsonRPC Spencer Butler <spencerunderground@gmail.com>
+# krpc - Kodi jsonRPC 
+# Author: Spencer Butler <spencerunderground>
 # Attempt to control Kodi's RPC interface
 # be careful with syntax. a space in " jsonrpc" had me fucked up for too long...
 
