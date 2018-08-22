@@ -68,11 +68,11 @@ done
 help=$(echo -e "usage: $0 [Option] <param>\n
    Requires: $required\n
    Player Options: (media type is autodetected)
-   -seek --seek <seconds>\t\t negatives rewind :: values < 60 start at that sec
+   -seek --seek <seconds>\t negatives rewind :: values < 60 start at that sec
    -sf --seek-forward\t\t seek small forward
    -sb --seek-backward\t\t seek small backward
    -goto --goto <next|previous>\t goto next/previous in playlist (-gn -gp)
-   -gn --goto-next\t\t\t goto next item in playlist
+   -gn --goto-next\t\t goto next item in playlist
    -gp --goto-previous\t\t goto previous item in playlist
    -pi --player-info\t\t query current playing media
    -p --pause\t\t\t pause the current media source
@@ -83,7 +83,7 @@ help=$(echo -e "usage: $0 [Option] <param>\n
    -vs --video-scan\t\t scan the video library for new content
    -vc --video-clean\t\t clean the video library\n
    GUI Options:
-   -gg --go-gui <action>\t\tone of the following <action>'s
+   -gg --go-gui <action>\tone of the following <action>
    \t\t\t\tBack         Info   ShowCodec
    \t\t\t\tContextMenu  Left   ShowOSD
    \t\t\t\tDown         Right  ShowPlayerProcessInfo
