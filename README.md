@@ -16,7 +16,7 @@ Well, I kept adding stuff and things and here we are. Feel free to do foo with t
         -seek --seek <seconds>	 negatives rewind :: values < 60 start at that sec
         -sf --seek-forward		 seek small forward
         -sb --seek-backward		 seek small backward
-        -goto --goto <next|previous>	 goto next/previous in playlist (-gn -gp)
+        -goto --goto <next|previous> goto next/previous in playlist (-gn -gp)
         -gn --goto-next		 goto next item in playlist
         -gp --goto-previous		 goto previous item in playlist
         -pi --player-info		 query current playing media
@@ -39,5 +39,5 @@ Well, I kept adding stuff and things and here we are. Feel free to do foo with t
      
         Debug Options:
         -ad --ad-hoc <method> <key> <value>
-        -m --methods			 see valid methods
+        -m --methods		see valid methods
         -i --introspect <method>	 debug stuff
