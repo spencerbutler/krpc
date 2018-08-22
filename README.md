@@ -7,6 +7,7 @@ I started this because I wanted a way to update the libraries, on the command li
 Well, I kept adding stuff and things and here we are. Feel free to do foo with this.
 
 ## Usage
+cp krpc.cfg to ~/.krpc.cfg with settings germane to your environment
 
      usage: ./krpc [Option] <param>
      
